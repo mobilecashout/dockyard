@@ -1,6 +1,7 @@
 package com.mobilecashout.dockyard;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 class ComponentEntry {
@@ -30,5 +31,20 @@ class ComponentEntry {
 
     String getActualClassName() {
         return actualClassName;
+    }
+
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ComponentEntry)) return false;
+        final ComponentEntry that = (ComponentEntry) o;
+        return Objects.equals(actualClassName, that.actualClassName) &&
+                Objects.equals(namedValue, that.namedValue) &&
+                Objects.equals(containers, that.containers);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(actualClassName, namedValue, containers);
     }
 }

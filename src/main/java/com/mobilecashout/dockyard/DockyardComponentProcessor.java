@@ -13,13 +13,20 @@ import javax.lang.model.element.*;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.Writer;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+import static java.util.stream.IntStream.range;
 
 @SupportedAnnotationTypes("com.mobilecashout.dockyard.Dockyard")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class DockyardComponentProcessor extends AbstractProcessor {
+    private static final int EXEC_AWAIT_MINUTES = 60;
+    private static final int LIMIT_ITEMS = 65534;
+
     @Override
     public boolean process(
             final Set<? extends TypeElement> annotations,
@@ -28,101 +35,162 @@ public class DockyardComponentProcessor extends AbstractProcessor {
         final ComponentEntrySet entrySet = new ComponentEntrySet();
 
         for (final TypeElement annotation : annotations) {
-            final Set<? extends Element> elementsAnnotatedWith = roundEnv.getElementsAnnotatedWith(annotation);
-            for (final Element typeElement : elementsAnnotatedWith) {
-                final ComponentEntry componentEntry = new ComponentEntry(
-                        ((TypeElement) typeElement).getQualifiedName().toString()
-                );
-                entrySet.add(componentEntry);
-
-                final List<? extends AnnotationMirror> annotationMirrors = typeElement.getAnnotationMirrors();
-
-                for (final AnnotationMirror annotationMirror : annotationMirrors) {
-
-                    final Map<? extends ExecutableElement, ? extends AnnotationValue> elementValues = annotationMirror.getElementValues();
-
-                    for (final Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry : elementValues.entrySet()) {
-
-                        final String annotationKey = entry.getKey().getSimpleName().toString();
-                        final Object annotationValue = entry.getValue().getValue();
-
-                        switch (annotationKey) {
-                            case "name":
-                                componentEntry.setNamedValue(annotationValue.toString());
-                                break;
-                            case "value":
-                                final List<? extends AnnotationValue> typeMirrors = (List<? extends AnnotationValue>) annotationValue;
-                                for (final AnnotationValue typeMirror : typeMirrors) {
-                                    componentEntry.addContainer(typeMirror.getValue().toString());
-                                }
-                                break;
-                        }
-                    }
-                }
-            }
+            processTypeElement(roundEnv, entrySet, annotation);
         }
 
+        final ExecutorService executorService = Executors.newFixedThreadPool(Runtime
+                .getRuntime()
+                .availableProcessors());
+
         for (final String container : entrySet.uniqueContainers()) {
-            createContainer(container, entrySet.entriesForContainer(container));
+            final List<ComponentEntry> componentEntries = entrySet.entriesForContainer(container);
+
+            if (LIMIT_ITEMS <= componentEntries.size()) {
+                throw new RuntimeException("No more than 65,533 Dockyard entries allowed due to limitation of how many " +
+                        "fields a class can have in JVM");
+            }
+
+            executorService.submit(() -> createContainer(container, componentEntries));
+        }
+
+        executorService.shutdown();
+
+        try {
+            executorService.awaitTermination(EXEC_AWAIT_MINUTES, TimeUnit.MINUTES);
+        } catch (final InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
         return true;
     }
 
-    private void createContainer(final String container, final ComponentEntry[] componentEntries) {
+    private void processTypeElement(
+            final RoundEnvironment roundEnv,
+            final ComponentEntrySet entrySet,
+            final TypeElement annotation
+    ) {
+        final Set<? extends Element> elementsAnnotatedWith = roundEnv.getElementsAnnotatedWith(annotation);
+
+        for (final Element typeElement : elementsAnnotatedWith) {
+            processTypeElement(entrySet, typeElement);
+        }
+    }
+
+    private void processTypeElement(final ComponentEntrySet entrySet, final Element typeElement) {
+        final ComponentEntry componentEntry = new ComponentEntry(
+                ((TypeElement) typeElement).getQualifiedName().toString()
+        );
+
+        entrySet.add(componentEntry);
+
+        final List<? extends AnnotationMirror> annotationMirrors = typeElement.getAnnotationMirrors();
+
+        for (final AnnotationMirror annotationMirror : annotationMirrors) {
+
+            processAnnotationMirror(componentEntry, annotationMirror);
+        }
+    }
+
+    private void processAnnotationMirror(final ComponentEntry componentEntry, final AnnotationMirror annotationMirror) {
+        final Map<? extends ExecutableElement, ? extends AnnotationValue> elementValues = annotationMirror.getElementValues();
+
+        for (final Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry : elementValues.entrySet()) {
+
+            final String annotationKey = entry.getKey().getSimpleName().toString();
+            final Object annotationValue = entry.getValue().getValue();
+
+            switch (annotationKey) {
+                case "name":
+                    componentEntry.setNamedValue(annotationValue.toString());
+                    break;
+                case "value":
+                    final List<? extends AnnotationValue> typeMirrors = (List<? extends AnnotationValue>) annotationValue;
+                    for (final AnnotationValue typeMirror : typeMirrors) {
+                        componentEntry.addContainer(typeMirror.getValue().toString());
+                    }
+                    break;
+            }
+        }
+    }
+
+    private void createContainer(final String container, final List<ComponentEntry> componentEntries) {
         final ClassName containerClass = ClassName.bestGuess(container);
         final ClassName containerDockyardClass = ClassName.bestGuess(String.format(
                 "%sDockyard",
                 container
         ));
 
-        final MethodSpec.Builder constructorBuilder = MethodSpec
-                .constructorBuilder()
-                .addAnnotation(Inject.class)
-                .addModifiers(Modifier.PUBLIC);
+        final List<FieldSpec> fieldsToInject = new ArrayList<>();
 
         int i = 0;
         for (final ComponentEntry componentEntry : componentEntries) {
-            final String argName = String.format("a%d", i);
-            final ParameterSpec.Builder injectableParameterBuilder = ParameterSpec
-                    .builder(ClassName.bestGuess(componentEntry.getActualClassName()), argName)
-                    .addModifiers(Modifier.FINAL);
+            final String toInjectFieldName = String.format("a%d", i);
+            final ClassName toInjectClass = ClassName.bestGuess(componentEntry.getActualClassName());
 
-            if (null != componentEntry.getNamedValue() && componentEntry.getNamedValue().length() > 0) {
-                final AnnotationSpec namedSpec = AnnotationSpec
+            final List<AnnotationSpec> annotations = new ArrayList<>();
+
+            annotations.add(AnnotationSpec.builder(Inject.class).build());
+
+            final String namedValue = componentEntry.getNamedValue();
+
+            if (null != namedValue && namedValue.length() > 0) {
+                final AnnotationSpec build = AnnotationSpec
                         .builder(Named.class)
-                        .addMember("value", "$S", componentEntry.getNamedValue())
+                        .addMember("value", "$S", namedValue)
                         .build();
 
-                injectableParameterBuilder.addAnnotation(namedSpec);
+                annotations.add(build);
             }
 
-            constructorBuilder
-                    .addParameter(injectableParameterBuilder.build());
+            final FieldSpec local = FieldSpec
+                    .builder(toInjectClass, toInjectFieldName, Modifier.PROTECTED)
+                    .addAnnotations(annotations)
+                    .build();
+
+            fieldsToInject.add(local);
             i++;
         }
 
-        constructorBuilder
-                .addStatement("this.$N = new $T[]{$L}", "instances", containerClass, getArgList(i));
+        final String injectedFieldsConstruct = range(0, componentEntries.size())
+                .mapToObj(ii -> String.format("a%d", ii))
+                .collect(Collectors.joining(","));
 
+        final ParameterizedTypeName parameterizedTypeName = ParameterizedTypeName.get(
+                ClassName.get(List.class),
+                containerClass
+        );
         final FieldSpec instances = FieldSpec
-                .builder(ArrayTypeName.of(containerClass), "instances", Modifier.PROTECTED, Modifier.FINAL)
+                .builder(parameterizedTypeName, "instances")
+                .initializer("null")
                 .build();
 
-        final MethodSpec getMethodSpec = MethodSpec.methodBuilder("getAll")
+        final MethodSpec getAllMethodSpec = MethodSpec.methodBuilder("getAll")
                 .addModifiers(Modifier.PUBLIC)
-                .returns(ArrayTypeName.of(containerClass))
-                .addStatement("return this.$N", "instances")
+                .returns(parameterizedTypeName)
+                .beginControlFlow("if (null == instances)")
+                .addStatement(
+                        "instances = $T.asList(new $T {" + injectedFieldsConstruct + "})",
+                        ClassName.get(Arrays.class),
+                        ArrayTypeName.of(containerClass)
+                )
+                .endControlFlow()
+                .addStatement("return $N", "instances")
+                .build();
+
+        final MethodSpec constructorMethodSpec = MethodSpec
+                .constructorBuilder()
+                .addAnnotation(Inject.class)
+                .addModifiers(Modifier.PUBLIC)
                 .build();
 
         final TypeSpec dockyardContainer = TypeSpec.classBuilder(containerDockyardClass)
                 .addSuperinterface(DockyardContainer.class)
                 .addModifiers(Modifier.PUBLIC)
-                .addMethod(constructorBuilder.build())
-                .addMethod(getMethodSpec)
+                .addFields(fieldsToInject)
+                .addMethod(constructorMethodSpec)
+                .addMethod(getAllMethodSpec)
                 .addField(instances)
                 .build();
-
 
         final JavaFile javaFile = JavaFile
                 .builder(containerDockyardClass.packageName(), dockyardContainer)
@@ -143,15 +211,5 @@ public class DockyardComponentProcessor extends AbstractProcessor {
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private String getArgList(final int argCount) {
-        final String[] argListArray = new String[argCount];
-
-        for (int i = 0; i < argCount; i++) {
-            argListArray[i] = String.format("a%d", i);
-        }
-
-        return String.join(", ", argListArray);
     }
 }

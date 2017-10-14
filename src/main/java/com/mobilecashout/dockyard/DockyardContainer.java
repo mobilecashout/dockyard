@@ -1,5 +1,7 @@
 package com.mobilecashout.dockyard;
 
+import java.util.List;
+
 public interface DockyardContainer {
-    <T> T[] getAll();
+    <T> List<T> getAll();
 }

@@ -63,20 +63,29 @@ generate a container class like this:
 import javax.inject.Inject;
 //...
 
+import com.mobilecashout.dockyard.DockyardContainer;
+import java.util.Arrays;
+import java.util.List;
+import javax.inject.Inject;
+
 public class MyValueProviderDockyard implements DockyardContainer {
-    protected final MyValueProvider[] instances;
+    @Inject
+    protected SimpleValueProvider a0;
 
     @Inject
-    public MyValueProviderDockyard(
+    protected ComplexValueProvider a1;
 
-            final SimpleValueProvider a0,
-            final ComplexValueProvider a1
-    ) {
-        this.instances = new MyValueProvider[]{a0, a1};
+    List<MyValueProvider> instances = null;
+
+    @Inject
+    public MyValueProviderDockyard() {
     }
 
-    public MyValueProvider[] getAll() {
-        return this.instances;
+    public List<MyValueProvider> getAll() {
+        if (null == instances) {
+            instances = Arrays.asList(new MyValueProvider[] {a0,a1});
+        }
+        return instances;
     }
 }
 ```
@@ -91,6 +100,12 @@ dependency.
 Name of the generated class will be determined by the class you are binding the component to,
 in this case, it is interface `MyValueProvider`, therefore the name of the component - 
 `MyValueProviderDockyard`.
+
+### Limitations
+
+You can not mark more than 65,534 classes for the same Dockyard container as this is the limit of fields
+a Java class can have. In the unlikely scenario this is necessary, for example, in case of generated classes
+etc, you will need to split them in multiple Dockyard containers and unify them back in code.
 
 ### Adding single instance to multiple dockyards
 
@@ -112,6 +127,19 @@ flexibility as to which instance should be used.
 ```java
 @Dockyard(value = {MyValueProvider.class}, name = "some_name")
 ```
+
+### Version history
+
+#### 2.0.0
+Oct 14, 2017
+
+- Now using fields instead of constructor parameters to inject container items, lifting the 255 item limit to 65,533.
+- **BC breaking**: `DockyardContainer.getAll()` now returns `List<T>` instead of `T[]` Array.
+
+#### 1.0.0
+Mar 9, 2017
+
+- Initial release
 
 ## License
 

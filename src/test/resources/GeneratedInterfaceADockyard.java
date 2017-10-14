@@ -1,18 +1,30 @@
 package com.mobilecashout.test;
 
 import com.mobilecashout.dockyard.DockyardContainer;
+import java.util.Arrays;
+import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Named;
 
 public class InterfaceADockyard implements DockyardContainer {
-    protected final InterfaceA[] instances;
+    @Inject
+    @Named("hello")
+    protected TestA a0;
 
     @Inject
-    public InterfaceADockyard(@Named("hello") final TestA a0, @Named("world") final TestB a1) {
-        this.instances = new InterfaceA[]{a0, a1};
+    @Named("world")
+    protected TestB a1;
+
+    List<InterfaceA> instances = null;
+
+    @Inject
+    public InterfaceADockyard() {
     }
 
-    public InterfaceA[] getAll() {
-        return this.instances;
+    public List<InterfaceA> getAll() {
+        if (null == instances) {
+            instances = Arrays.asList(new InterfaceA[] {a0,a1});
+        }
+        return instances;
     }
 }
