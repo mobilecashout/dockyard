@@ -144,7 +144,7 @@ public class DockyardComponentProcessor extends AbstractProcessor {
             }
 
             final FieldSpec local = FieldSpec
-                    .builder(toInjectClass, toInjectFieldName, Modifier.PRIVATE)
+                    .builder(toInjectClass, toInjectFieldName, Modifier.PROTECTED)
                     .addAnnotations(annotations)
                     .build();
 

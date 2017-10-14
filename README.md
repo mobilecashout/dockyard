@@ -137,7 +137,12 @@ flexibility as to which instance should be used.
 
 ### Version history
 
-#### 2.0.1
+#### 2.0.3
+Oct 15, 2017
+
+- Design fix: make injectable fields protected again (argh, Dagger2...)
+
+#### 2.0.2
 Oct 14, 2017
 
 - Design fix: make all container fields private
