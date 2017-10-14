@@ -8,6 +8,7 @@ import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Singleton;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.*;
 import javax.tools.JavaFileObject;
@@ -161,6 +162,7 @@ public class DockyardComponentProcessor extends AbstractProcessor {
         );
         final FieldSpec instances = FieldSpec
                 .builder(parameterizedTypeName, "instances")
+                .addModifiers(Modifier.PROTECTED)
                 .initializer("null")
                 .build();
 
@@ -169,7 +171,8 @@ public class DockyardComponentProcessor extends AbstractProcessor {
                 .returns(parameterizedTypeName)
                 .beginControlFlow("if (null == instances)")
                 .addStatement(
-                        "instances = $T.asList(new $T {" + injectedFieldsConstruct + "})",
+                        "instances = $T.unmodifiableList($T.asList(new $T {" + injectedFieldsConstruct + "}))",
+                        ClassName.get(Collections.class),
                         ClassName.get(Arrays.class),
                         ArrayTypeName.of(containerClass)
                 )
@@ -185,6 +188,7 @@ public class DockyardComponentProcessor extends AbstractProcessor {
 
         final TypeSpec dockyardContainer = TypeSpec.classBuilder(containerDockyardClass)
                 .addSuperinterface(DockyardContainer.class)
+                .addAnnotation(Singleton.class)
                 .addModifiers(Modifier.PUBLIC)
                 .addFields(fieldsToInject)
                 .addMethod(constructorMethodSpec)

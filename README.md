@@ -33,16 +33,21 @@ Add the dependency:
 
 ## Usage
 
-Consider having this interface:
+Consider having an interface:
 
 ```java
 interface MyValueProvider {}
 ```
 
-It is expected you will have one or more implementations of this interface. The specific use case of Dockyard is when you have more than one implementation and you require all of those implementations to do a certain task. 
+It is common you will have one or more implementations of mentioned interface for many different reasons.
+The specific use case of Dockyard is when  you have more than one implementation and you require all of those 
+implementations to do a certain task, but do not want to manually inject all of them, and find it would be
+easier to just have a list of those implementations you can then access later for whatever reason.
 
-It can be done by annotating these implementations with `@Dockyard` annotation - they will then
-be picked up by Dockyard compiler and registered in a container.
+This can be achieved using Dockyard, namely by annotating these implementations with `@Dockyard` annotation - 
+they will then be picked up by Dockyard annotation processor and registered in a generated container.
+
+Consider this example:
 
 ```java
 import com.mobilecashout.dockyard.Dockyard;
@@ -56,8 +61,8 @@ class SimpleValueProvider implements MyValueProvider{}
 class ComplexValueProvider implements MyValueProvider{}
 ```
 
-Having an implementation like this will have Dockyard pick up both of the classes and
-generate a container class like this:
+Given that you have two classes like this in your codebase, Dockyard would pick them up and generate a source file
+containing a special container class:
 
 ```java
 import javax.inject.Inject;
@@ -67,7 +72,9 @@ import com.mobilecashout.dockyard.DockyardContainer;
 import java.util.Arrays;
 import java.util.List;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 
+@Singleton
 public class MyValueProviderDockyard implements DockyardContainer {
     @Inject
     protected SimpleValueProvider a0;
@@ -75,7 +82,7 @@ public class MyValueProviderDockyard implements DockyardContainer {
     @Inject
     protected ComplexValueProvider a1;
 
-    List<MyValueProvider> instances = null;
+    protected List<MyValueProvider> instances = null;
 
     @Inject
     public MyValueProviderDockyard() {
@@ -83,7 +90,7 @@ public class MyValueProviderDockyard implements DockyardContainer {
 
     public List<MyValueProvider> getAll() {
         if (null == instances) {
-            instances = Arrays.asList(new MyValueProvider[] {a0,a1});
+            instances = Collections.unmodifiableList(Arrays.asList(new MyValueProvider[] {a0,a1}));
         }
         return instances;
     }
@@ -91,14 +98,14 @@ public class MyValueProviderDockyard implements DockyardContainer {
 ```
 
 If you look at the generated code, you can notice the `@Inject` annotation - 
-Dockyard is designed only to locate and bind the components, not to instantiate them. 
+Dockyard is designed only to locate and compose the components, not to instantiate them. 
 Instantiation should be done in your dependency injection container.
 
 In both Dagger and Guice this can be done by simply injecting the `*Dockyard` component as a
 dependency.
 
 Name of the generated class will be determined by the class you are binding the component to,
-in this case, it is interface `MyValueProvider`, therefore the name of the component - 
+in this case, it is interface `MyValueProvider`, therefore the name of the container - 
 `MyValueProviderDockyard`.
 
 ### Limitations
@@ -129,6 +136,12 @@ flexibility as to which instance should be used.
 ```
 
 ### Version history
+
+#### 2.0.1
+Oct 14, 2017
+
+- Design fix: make instances variable protected and make the list of items be immutable.
+- Design fix: Dockyard container itself is now marked as `Singleton`.
 
 #### 2.0.0
 Oct 14, 2017

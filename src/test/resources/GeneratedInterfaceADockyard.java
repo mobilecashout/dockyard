@@ -2,10 +2,13 @@ package com.mobilecashout.test;
 
 import com.mobilecashout.dockyard.DockyardContainer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Singleton;
 
+@Singleton
 public class InterfaceADockyard implements DockyardContainer {
     @Inject
     @Named("hello")
@@ -15,7 +18,7 @@ public class InterfaceADockyard implements DockyardContainer {
     @Named("world")
     protected TestB a1;
 
-    List<InterfaceA> instances = null;
+    protected List<InterfaceA> instances = null;
 
     @Inject
     public InterfaceADockyard() {
@@ -23,7 +26,7 @@ public class InterfaceADockyard implements DockyardContainer {
 
     public List<InterfaceA> getAll() {
         if (null == instances) {
-            instances = Arrays.asList(new InterfaceA[] {a0,a1});
+            instances = Collections.unmodifiableList(Arrays.asList(new InterfaceA[] {a0,a1}));
         }
         return instances;
     }
