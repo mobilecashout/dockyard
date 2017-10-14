@@ -140,6 +140,11 @@ flexibility as to which instance should be used.
 #### 2.0.1
 Oct 14, 2017
 
+- Design fix: make all container fields private
+
+#### 2.0.1
+Oct 14, 2017
+
 - Design fix: make instances variable protected and make the list of items be immutable.
 - Design fix: Dockyard container itself is now marked as `Singleton`.
 

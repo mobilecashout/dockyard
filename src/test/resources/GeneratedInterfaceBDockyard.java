@@ -12,9 +12,9 @@ import javax.inject.Singleton;
 public class InterfaceBDockyard implements DockyardContainer {
     @Inject
     @Named("hello")
-    protected TestA a0;
+    private TestA a0;
 
-    protected List<InterfaceB> instances = null;
+    private List<InterfaceB> instances = null;
 
     @Inject
     public InterfaceBDockyard() {

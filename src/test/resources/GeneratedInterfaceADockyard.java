@@ -12,13 +12,13 @@ import javax.inject.Singleton;
 public class InterfaceADockyard implements DockyardContainer {
     @Inject
     @Named("hello")
-    protected TestA a0;
+    private TestA a0;
 
     @Inject
     @Named("world")
-    protected TestB a1;
+    private TestB a1;
 
-    protected List<InterfaceA> instances = null;
+    private List<InterfaceA> instances = null;
 
     @Inject
     public InterfaceADockyard() {
