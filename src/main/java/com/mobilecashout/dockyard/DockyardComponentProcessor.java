@@ -2,22 +2,19 @@ package com.mobilecashout.dockyard;
 
 import com.squareup.javapoet.*;
 
-import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.RoundEnvironment;
-import javax.annotation.processing.SupportedAnnotationTypes;
-import javax.annotation.processing.SupportedSourceVersion;
+import javax.annotation.processing.*;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.*;
+import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
+import java.io.File;
 import java.io.IOException;
 import java.io.Writer;
+import java.net.URI;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static java.util.stream.IntStream.range;
@@ -25,23 +22,27 @@ import static java.util.stream.IntStream.range;
 @SupportedAnnotationTypes("com.mobilecashout.dockyard.Dockyard")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class DockyardComponentProcessor extends AbstractProcessor {
-    private static final int EXEC_AWAIT_MINUTES = 60;
     private static final int LIMIT_ITEMS = 65534;
+    private static final String MEMORY_SCHEME = "mem";
+
 
     @Override
     public boolean process(
             final Set<? extends TypeElement> annotations,
             final RoundEnvironment roundEnv
     ) {
+        if (annotations.isEmpty()) {
+            return true;
+        }
+
         final ComponentEntrySet entrySet = new ComponentEntrySet();
 
         for (final TypeElement annotation : annotations) {
             processTypeElement(roundEnv, entrySet, annotation);
         }
 
-        final ExecutorService executorService = Executors.newFixedThreadPool(Runtime
-                .getRuntime()
-                .availableProcessors());
+
+        final List<JavaFileObject> javaFileObjects = new ArrayList<>();
 
         for (final String container : entrySet.uniqueContainers()) {
             final List<ComponentEntry> componentEntries = entrySet.entriesForContainer(container);
@@ -51,15 +52,39 @@ public class DockyardComponentProcessor extends AbstractProcessor {
                         "fields a class can have in JVM");
             }
 
-            executorService.submit(() -> createContainer(container, componentEntries));
+            final JavaFileObject javaFileObject = createContainer(
+                    container,
+                    componentEntries
+            );
+
+            javaFileObjects.add(javaFileObject);
         }
 
-        executorService.shutdown();
+        final Messager messager = processingEnv.getMessager();
 
-        try {
-            executorService.awaitTermination(EXEC_AWAIT_MINUTES, TimeUnit.MINUTES);
-        } catch (final InterruptedException e) {
-            throw new RuntimeException(e);
+        for (final JavaFileObject javaFileObject : javaFileObjects) {
+            try {
+                final URI javaFileUri = javaFileObject.toUri();
+
+                messager.printMessage(Diagnostic.Kind.NOTE, String.format("Generated: %s", javaFileUri));
+
+                if (javaFileUri.getScheme().equals(MEMORY_SCHEME)) {
+                    messager.printMessage(Diagnostic.Kind.NOTE, "Test compilation, skipping confirmation...");
+                    continue;
+                }
+
+                final File javaFileFile = new File(javaFileUri);
+
+                if (!javaFileFile.exists()) {
+                    throw new RuntimeException(String.format(
+                            "File does not exist, expected generated source: %s",
+                            javaFileFile
+                    ));
+                }
+
+            } catch (final Exception e) {
+                throw new RuntimeException(e);
+            }
         }
 
         return true;
@@ -114,7 +139,7 @@ public class DockyardComponentProcessor extends AbstractProcessor {
         }
     }
 
-    private void createContainer(final String container, final List<ComponentEntry> componentEntries) {
+    private JavaFileObject createContainer(final String container, final List<ComponentEntry> componentEntries) {
         final ClassName containerClass = ClassName.bestGuess(container);
         final ClassName containerDockyardClass = ClassName.bestGuess(String.format(
                 "%sDockyard",
@@ -212,6 +237,7 @@ public class DockyardComponentProcessor extends AbstractProcessor {
             writer.flush();
             writer.close();
 
+            return classFile;
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
