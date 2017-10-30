@@ -6,7 +6,7 @@
 
     <groupId>com.mobilecashout</groupId>
     <artifactId>dockyard</artifactId>
-    <version>2.0.4</version>
+    <version>2.0.5</version>
 
     <name>Dockyard</name>
     <description>Centralized component discovery made easy</description>
@@ -50,6 +50,35 @@
                     <compilerArgument>-proc:none</compilerArgument>
                 </configuration>
             </plugin>
+            <plugin>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>com.google.guava:guava</exclude>
+                                    <exclude>javax.inject:javax.inject</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.google.auto.common</pattern>
+                                    <shadedPattern>com.mobilecashout.dockyard.shaded.auto.common</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.squareup.javapoet</pattern>
+                                    <shadedPattern>com.mobilecashout.dockyard.shaded.javapoet</shadedPattern>
+                                </relocation>
+                            </relocations>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
@@ -64,6 +93,14 @@
             <groupId>com.squareup</groupId>
             <artifactId>javapoet</artifactId>
             <version>1.8.0</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.auto</groupId>
+            <artifactId>auto-common</artifactId>
+            <version>0.8</version>
+            <scope>compile</scope>
         </dependency>
 
         <dependency>
