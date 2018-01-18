@@ -101,8 +101,17 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
         entrySet.add(componentEntry);
 
         final List<? extends AnnotationMirror> annotationMirrors = typeElement.getAnnotationMirrors();
+        final Name dockyardName = processingEnv.getElementUtils().getName(Dockyard.class.getName());
 
         for (final AnnotationMirror annotationMirror : annotationMirrors) {
+            final Name currentName = processingEnv
+                    .getElementUtils()
+                    .getBinaryName((TypeElement) annotationMirror.getAnnotationType().asElement());
+
+            if (!currentName.equals(dockyardName)) {
+                continue;
+            }
+
             processAnnotationMirror(componentEntry, annotationMirror);
         }
     }
