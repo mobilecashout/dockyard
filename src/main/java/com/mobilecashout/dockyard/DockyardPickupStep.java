@@ -4,6 +4,7 @@ import com.google.auto.common.BasicAnnotationProcessor;
 import com.google.common.collect.SetMultimap;
 import com.squareup.javapoet.*;
 
+import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.inject.Inject;
@@ -20,6 +21,7 @@ import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.mobilecashout.dockyard.DockyardComponentProcessor.GENERATED_SOURCES;
 import static java.util.stream.IntStream.range;
 
 class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
@@ -45,8 +47,9 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
         });
 
         final List<JavaFileObject> javaFileObjects = new ArrayList<>();
+        final List<String> containers = entrySet.uniqueContainers();
 
-        for (final String container : entrySet.uniqueContainers()) {
+        for (final String container : containers) {
             final List<ComponentEntry> componentEntries = entrySet.entriesForContainer(container);
 
             if (LIMIT_ITEMS <= componentEntries.size()) {
@@ -71,7 +74,10 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
                 messager.printMessage(Diagnostic.Kind.NOTE, String.format("Generated: %s", javaFileUri));
 
                 if (javaFileUri.getScheme().equals(MEMORY_SCHEME)) {
-                    messager.printMessage(Diagnostic.Kind.NOTE, "Test compilation, skipping confirmation...");
+                    messager.printMessage(
+                            Diagnostic.Kind.NOTE,
+                            "Test compilation, skipping confirmation..."
+                    );
                     continue;
                 }
 
@@ -138,12 +144,20 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
         }
     }
 
-    private JavaFileObject createContainer(final String container, final List<ComponentEntry> componentEntries) {
+    private synchronized JavaFileObject createContainer(
+            final String container,
+            final List<ComponentEntry> componentEntries
+    ) {
         final ClassName containerClass = ClassName.bestGuess(container);
         final ClassName containerDockyardClass = ClassName.bestGuess(String.format(
                 "%sDockyard",
                 container
         ));
+        final String dockyardClass = containerDockyardClass.toString();
+
+        if (GENERATED_SOURCES.containsKey(dockyardClass)) {
+            return GENERATED_SOURCES.get(dockyardClass);
+        }
 
         final List<FieldSpec> fieldsToInject = new ArrayList<>();
 
@@ -225,11 +239,17 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
                 .build();
 
         try {
-            final JavaFileObject classFile = processingEnv
-                    .getFiler()
-                    .createSourceFile(containerDockyardClass.toString());
+            final Filer filer = processingEnv.getFiler();
+
+            final JavaFileObject classFile;
+
+            synchronized (GENERATED_SOURCES) {
+                classFile = filer.createSourceFile(dockyardClass);
+                GENERATED_SOURCES.put(dockyardClass, classFile);
+            }
 
             final Writer writer = classFile.openWriter();
+            writer.write("");
 
             javaFile.writeTo(writer);
 
@@ -237,6 +257,7 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
             writer.close();
 
             return classFile;
+
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
