@@ -4,6 +4,7 @@ import com.google.auto.common.BasicAnnotationProcessor;
 import com.google.common.collect.SetMultimap;
 import com.squareup.javapoet.*;
 
+import javax.annotation.Generated;
 import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
@@ -27,6 +28,9 @@ import static java.util.stream.IntStream.range;
 class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
     private static final int LIMIT_ITEMS = 65534;
     private static final String MEMORY_SCHEME = "mem";
+    private static final AnnotationSpec GENERATED_SPEC = AnnotationSpec.builder(Generated.class)
+            .addMember("value", "$S", Dockyard.class.getName())
+            .build();
     private final ProcessingEnvironment processingEnv;
 
     DockyardPickupStep(final ProcessingEnvironment processingEnv) {
@@ -70,8 +74,6 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
         for (final JavaFileObject javaFileObject : javaFileObjects) {
             try {
                 final URI javaFileUri = javaFileObject.toUri();
-
-                messager.printMessage(Diagnostic.Kind.NOTE, String.format("Generated: %s", javaFileUri));
 
                 if (javaFileUri.getScheme().equals(MEMORY_SCHEME)) {
                     messager.printMessage(
@@ -156,6 +158,12 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
         final String dockyardClass = containerDockyardClass.toString();
 
         if (GENERATED_SOURCES.containsKey(dockyardClass)) {
+            processingEnv.getMessager().printMessage(
+                    Diagnostic.Kind.ERROR,
+                    String.format("Attempting to generate %s twice. This might be caused if one of the " +
+                            "dependencies has a dependency on another generated class. Such dependency" +
+                            "will not be present in generated Dockyard file.", dockyardClass)
+            );
             return GENERATED_SOURCES.get(dockyardClass);
         }
 
@@ -227,6 +235,7 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
         final TypeSpec dockyardContainer = TypeSpec.classBuilder(containerDockyardClass)
                 .addSuperinterface(DockyardContainer.class)
                 .addAnnotation(Singleton.class)
+                .addAnnotation(GENERATED_SPEC)
                 .addModifiers(Modifier.PUBLIC)
                 .addFields(fieldsToInject)
                 .addMethod(constructorMethodSpec)
@@ -255,6 +264,15 @@ class DockyardPickupStep implements BasicAnnotationProcessor.ProcessingStep {
 
             writer.flush();
             writer.close();
+
+            processingEnv.getMessager().printMessage(
+                    Diagnostic.Kind.NOTE,
+                    String.format(
+                            "Wrote %s with %d entries",
+                            containerDockyardClass.simpleName(),
+                            componentEntries.size()
+                    )
+            );
 
             return classFile;
 

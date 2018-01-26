@@ -4,11 +4,13 @@ import com.mobilecashout.dockyard.DockyardContainer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import javax.annotation.Generated;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
 
 @Singleton
+@Generated("com.mobilecashout.dockyard.Dockyard")
 public class InterfaceADockyard implements DockyardContainer {
     @Inject
     @Named("hello")
